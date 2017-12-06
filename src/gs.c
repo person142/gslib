@@ -49,18 +49,19 @@ static buffer static_buffer = null_buffer;
 static void gather_noop(
   void *out, const void *in, const unsigned vn,
   const uint *map, gs_dom dom, gs_op op, int dstride,
-  int mf_nt, int *mapf)
+  int mf_nt, int *mapf, int m_size, int acc)
 {}
 
 static void scatter_noop(
   void *out, const void *in, const unsigned vn,
   const uint *map, gs_dom dom, int dstride, int mf_nt,
-  int *mapf)
+  int *mapf, int m_size, int acc)
 {}
 
 static void init_noop(
   void *out, const unsigned vn,
-  const uint *map, gs_dom dom, gs_op op)
+  const uint *map, gs_dom dom, gs_op op, int dstride,
+  int mf_nt, int *mapf, int m_size, int acc)
 {}
 
 
@@ -1190,8 +1191,9 @@ static struct cr_data *cr_setup_aux(
 
 static void cr_free_stage_maps(struct cr_stage *stage, unsigned kmax)
 {
-  unsigned k;
-  int *map,*mapf;
+  unsigned int k;
+  const unsigned int *map;
+  int *mapf;
   for(k=0; k<kmax; ++k) {
     map = stage->scatter_map;
     mapf = stage->scatter_mapf;
@@ -1224,7 +1226,7 @@ static void cr_free(struct cr_data *data)
 }
 
 static void cr_setup(struct gs_remote *r, struct gs_topology *top,
-                     const struct comm *comm, buffer *buf)
+                     const struct comm *comm, buffer *buf, int dstride)
 {
   struct cr_data *crd = cr_setup_aux(&top->sh,comm,buf, &r->mem_size);
   r->buffer_size = crd->buffer_size;
@@ -1408,9 +1410,9 @@ static void auto_setup(struct gs_remote *r, struct gs_topology *top,
 
     DRY_RUN(0, r, "pairwise times (avg, min, max)");
 
-    cr_setup(&r_alt, top,comm,buf);
+    cr_setup(&r_alt, top,comm,buf,dstride);
     DRY_RUN_CHECK(      "crystal router                ", "crystal router");
-    
+
     if(top->total_shared<100000) {
       allreduce_setup(&r_alt, top,comm,buf,dstride);
       DRY_RUN_CHECK(    "all reduce                    ", "allreduce");
@@ -2064,7 +2066,7 @@ void fgs_fields_isend(const sint *handle,
   offset = *stride * gs_dom_size[*dom-1];
   for(i=*n;i;--i) *p++ = u, u = (char*)u + offset;
 
-  cgs_many_isend((void *const*)fgs_fields_array.ptr,*n,
+  cgs_many_isend((void *)fgs_fields_array.ptr,*n,
            (gs_dom)(*dom-1),(gs_op_t)(*op-1),
            *transpose!=0, fgs_info[*handle],NULL);
 #endif
@@ -2088,7 +2090,7 @@ void fgs_fields_irecv(const sint *handle,
   offset = *stride * gs_dom_size[*dom-1];
   for(i=*n;i;--i) *p++ = u, u = (char*)u + offset;
 
-  cgs_many_irecv((void *const*)fgs_fields_array.ptr,*n,
+  cgs_many_irecv((void *)fgs_fields_array.ptr,*n,
            (gs_dom)(*dom-1),(gs_op_t)(*op-1),
            *transpose!=0, fgs_info[*handle],NULL);
 #endif
@@ -2115,7 +2117,7 @@ void fgs_fields_wait(const sint *handle,
   offset = *stride * gs_dom_size[*dom-1];
   for(i=*n;i;--i) *p++ = u, u = (char*)u + offset;
 
-  cgs_many_wait((void *const*)fgs_fields_array.ptr,*n,
+  cgs_many_wait((void *)fgs_fields_array.ptr,*n,
            (gs_dom)(*dom-1),(gs_op_t)(*op-1),
            *transpose!=0, fgs_info[*handle],NULL);
 #endif
@@ -2143,7 +2145,7 @@ void fgs_fields(const sint *handle,
   offset = *stride * gs_dom_size[*dom-1];
   for(i=*n;i;--i) *p++ = u, u = (char*)u + offset;
 
-  cgs_many((void *const*)fgs_fields_array.ptr,*n,
+  cgs_many((void *)fgs_fields_array.ptr,*n,
            (gs_dom)(*dom-1),(gs_op_t)(*op-1),
            *transpose!=0, fgs_info[*handle],NULL);
 #endif
